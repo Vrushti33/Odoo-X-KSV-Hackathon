@@ -18,6 +18,16 @@ Procurement & Vendor Management ERP — a centralized platform to digitize and s
 
 ---
 
+## Team Responsibilities
+
+| Member | Responsibilities |
+|--------|-----------------|
+| **Vrushti** | Database Design + Admin Module |
+| **Priyanka** | Procurement Officer + Vendor Module |
+| **Nisarg** | Frontend + Manager/Approver Module |
+
+---
+
 ## ER Diagram
 
 ```mermaid
