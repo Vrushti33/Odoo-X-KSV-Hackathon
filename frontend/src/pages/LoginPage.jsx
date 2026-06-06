@@ -11,12 +11,12 @@ export const LoginPage = () => {
   const navigate = useNavigate();
   const { login } = useAuth();
 
-  const demoUsers = {
-    'admin@vendorbridge.com': { role: 'ADMIN', firstName: 'Admin', lastName: 'User' },
-    'officer@vendorbridge.com': { role: 'PROCUREMENT_OFFICER', firstName: 'John', lastName: 'Procurement' },
-    'vendor@vendorbridge.com': { role: 'VENDOR', firstName: 'Vendor', lastName: 'User' },
-    'manager@vendorbridge.com': { role: 'MANAGER', firstName: 'Jane', lastName: 'Manager' },
-  };
+  const demoUsers = [
+    { email: 'admin@vendorbridge.com',  label: 'Admin',               role: 'ADMIN' },
+    { email: 'rahul@vendorbridge.com',  label: 'Rahul (Procurement)', role: 'PROCUREMENT_OFFICER' },
+    { email: 'amit@techsupply.com',     label: 'Amit (Vendor)',       role: 'VENDOR' },
+    { email: 'ankit@vendorbridge.com',  label: 'Ankit (Manager)',     role: 'MANAGER' },
+  ];
 
   const handleLogin = async (e) => {
     e.preventDefault();
@@ -29,21 +29,10 @@ export const LoginPage = () => {
         return;
       }
 
-      const user = demoUsers[email];
-      if (!user) {
-        setError('Invalid email or password');
-        return;
-      }
-
-      login({
-        id: 'user_' + email,
-        email,
-        ...user,
-      });
-
+      await login(email, password);   // AuthContext calls POST /api/auth/login
       navigate('/');
     } catch (err) {
-      setError(err.message || 'Login failed');
+      setError(err.message || 'Login failed. Please check your credentials.');
     } finally {
       setLoading(false);
     }
@@ -139,22 +128,21 @@ export const LoginPage = () => {
             </Button>
           </form>
 
-          {/* Quick Login Badge Area */}
           <div className="mt-8 pt-6 border-t border-slate-100">
-            <p className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-3">Quick Login (Demo Roles)</p>
+            <p className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-3">Quick Login (Demo — password: password123)</p>
             <div className="grid grid-cols-2 gap-2">
-              {Object.entries(demoUsers).map(([demoEmail, info]) => (
+              {demoUsers.map((demo) => (
                 <button
-                  key={demoEmail}
+                  key={demo.email}
                   type="button"
                   onClick={() => {
-                    setEmail(demoEmail);
-                    setPassword('demo123');
+                    setEmail(demo.email);
+                    setPassword('password123');
                   }}
                   className="text-left px-3 py-2 text-xs border border-slate-200 hover:border-[#175193]/50 hover:bg-slate-50 rounded-xl transition-all"
                 >
-                  <div className="font-semibold text-slate-700">{info.firstName} ({info.role})</div>
-                  <div className="text-slate-400 text-[10px] truncate">{demoEmail}</div>
+                  <div className="font-semibold text-slate-700">{demo.label}</div>
+                  <div className="text-slate-400 text-[10px] truncate">{demo.email}</div>
                 </button>
               ))}
             </div>

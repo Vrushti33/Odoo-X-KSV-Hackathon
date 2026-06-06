@@ -8,8 +8,10 @@ import { UnauthorizedPage } from './pages/UnauthorizedPage';
 import { DashboardPage } from './pages/DashboardPage';
 import { VendorsListPage, VendorDetailPage } from './pages/VendorsPage';
 import { RFQListPage, RFQDetailPage } from './pages/RFQPage';
-import { QuotationsListPage, QuotationComparePage } from './pages/QuotationsPage';
-import { ApprovalsPage, PurchaseOrderListPage, PurchaseOrderDetailPage } from './pages/ApprovalsPage';
+import { RfqCreatePage } from './pages/RfqCreatePage';
+import { QuotationsListPage, QuotationComparePage, QuotationSubmitPage } from './pages/QuotationsPage';
+import { ApprovalsPage } from './pages/ApprovalsPage';
+import { PurchaseOrderListPage, PurchaseOrderDetailPage } from './pages/PurchaseOrdersPage';
 import { InvoiceListPage, InvoiceDetailPage } from './pages/InvoicesPage';
 import { ActivityLogPage } from './pages/ActivityPage';
 import { ReportsPage } from './pages/ReportsPage';
@@ -63,6 +65,14 @@ function App() {
             }
           />
           <Route
+            path="/rfqs/create"
+            element={
+              <ProtectedRoute requiredRoles={['ADMIN', 'PROCUREMENT_OFFICER']}>
+                <RfqCreatePage />
+              </ProtectedRoute>
+            }
+          />
+          <Route
             path="/rfqs/:id"
             element={
               <ProtectedRoute requiredRoles={['ADMIN', 'PROCUREMENT_OFFICER', 'VENDOR', 'MANAGER']}>
@@ -77,6 +87,22 @@ function App() {
             element={
               <ProtectedRoute requiredRoles={['PROCUREMENT_OFFICER', 'VENDOR', 'MANAGER']}>
                 <QuotationsListPage />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/quotations/submit"
+            element={
+              <ProtectedRoute requiredRoles={['VENDOR', 'PROCUREMENT_OFFICER', 'ADMIN']}>
+                <QuotationSubmitPage />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/quotations/submit/:rfqId"
+            element={
+              <ProtectedRoute requiredRoles={['VENDOR', 'PROCUREMENT_OFFICER', 'ADMIN']}>
+                <QuotationSubmitPage />
               </ProtectedRoute>
             }
           />

@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useAuth } from '../context/AuthContext';
-import { rfqService, quotationService, approvalService, poService, invoiceService } from '../services/mockData';
+import { apiClient } from '../services/apiClient';
 import { Card, Badge, Spinner } from '../components/UI';
 import Layout from '../components/Layout';
 
@@ -30,21 +30,14 @@ export const DashboardPage = () => {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    const loadData = () => {
+    const loadData = async () => {
       try {
-        const rfqs = rfqService.getAll();
-        const quotations = quotationService.getAll();
-        const approvals = approvalService.getAll();
-        const pos = poService.getAll();
+        const statsData = await apiClient.get('/dashboard/stats');
+        setStats(statsData);
 
-        setStats({
-          totalRFQs: rfqs.length,
-          activeRFQs: rfqs.filter((r) => r.status === 'Open').length,
-          pendingApprovals: approvals.filter((a) => a.status === 'Pending').length,
-          totalPOs: pos.length,
-        });
-
-        setRecentRFQs(rfqs.slice(-3).reverse());
+        const rfqsData = await apiClient.get('/rfqs');
+        const rfqList = Array.isArray(rfqsData) ? rfqsData : rfqsData.content || [];
+        setRecentRFQs(rfqList.slice(0, 3));
       } catch (err) {
         console.error('Error loading dashboard data:', err);
       } finally {
@@ -92,10 +85,10 @@ export const DashboardPage = () => {
               {recentRFQs.map((rfq) => (
                 <div key={rfq.id} className="flex items-center justify-between p-3 bg-slate-50 rounded-xl border border-slate-100">
                   <div>
-                    <p className="font-semibold text-text-primary">{rfq.referenceNo}</p>
+                    <p className="font-semibold text-text-primary">{rfq.rfqNumber}</p>
                     <p className="text-sm text-text-secondary">{rfq.title}</p>
                   </div>
-                  <Badge variant={rfq.status === 'Open' ? 'info' : 'danger'}>{rfq.status}</Badge>
+                  <Badge variant={rfq.status === 'PUBLISHED' ? 'info' : 'secondary'}>{rfq.status}</Badge>
                 </div>
               ))}
             </div>

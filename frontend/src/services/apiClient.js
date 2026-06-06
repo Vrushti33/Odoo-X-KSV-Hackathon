@@ -40,7 +40,7 @@ const request = async (endpoint, options = {}) => {
       throw new Error(errorMessage);
     }
 
-    // 244 No Content check
+    // 204 No Content — return null
     if (response.status === 204) {
       return null;
     }
@@ -56,5 +56,6 @@ export const apiClient = {
   get: (endpoint, options = {}) => request(endpoint, { ...options, method: 'GET' }),
   post: (endpoint, body, options = {}) => request(endpoint, { ...options, method: 'POST', body }),
   put: (endpoint, body, options = {}) => request(endpoint, { ...options, method: 'PUT', body }),
+  patch: (endpoint, body = null, options = {}) => request(endpoint, { ...options, method: 'PATCH', body }),
   delete: (endpoint, options = {}) => request(endpoint, { ...options, method: 'DELETE' }),
 };

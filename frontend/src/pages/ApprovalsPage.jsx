@@ -1,106 +1,123 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
-import { approvalService, poService } from '../services/mockData';
+import { apiClient } from '../services/apiClient';
 import { Button, Table, Card, Badge, Modal, Spinner, Alert } from '../components/UI';
 import Layout from '../components/Layout';
+import { useAuth } from '../context/AuthContext';
 
 export const ApprovalsPage = () => {
   const [approvals, setApprovals] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState('');
   const [selectedApproval, setSelectedApproval] = useState(null);
   const [showModal, setShowModal] = useState(false);
+  const [remarks, setRemarks] = useState('');
+  const [actionLoading, setActionLoading] = useState(false);
+  const [timeline, setTimeline] = useState([]);
+  const { hasRole } = useAuth();
 
-  useEffect(() => {
-    const data = approvalService.getAll();
-    setApprovals(data);
-    setLoading(false);
+  const fetchApprovals = useCallback(async () => {
+    try {
+      setLoading(true);
+      const data = await apiClient.get('/approvals');
+      setApprovals(Array.isArray(data) ? data : data.content || []);
+    } catch (err) {
+      setError(err.message || 'Failed to fetch approvals');
+    } finally {
+      setLoading(false);
+    }
   }, []);
 
-  const handleApprove = (approval) => {
-    const updatedApproval = approvalService.update(approval.id, { status: 'Approved' });
-    setApprovals(approvals.map((a) => (a.id === approval.id ? updatedApproval : a)));
-    setShowModal(false);
+  useEffect(() => {
+    fetchApprovals();
+  }, [fetchApprovals]);
 
-    // Create PO after approval
-    const newPO = poService.add({
-      poNumber: 'PO-' + Date.now().toString().slice(-6),
-      rfqNo: approval.rfqNo,
-      vendorName: approval.vendorName,
-      orderDate: new Date().toISOString().split('T')[0],
-      deliveryDate: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
-      totalAmount: approval.amount,
-      status: 'Confirmed',
-      items: [{ itemNo: 1, description: 'Approved items', quantity: 1, unitPrice: approval.amount, totalPrice: approval.amount }],
-    });
+  useEffect(() => {
+    if (selectedApproval && showModal) {
+      apiClient.get(`/activity/APPROVAL/${selectedApproval.id}`)
+        .then(data => setTimeline(Array.isArray(data) ? data : (data.content || [])))
+        .catch(err => console.error('Failed to fetch timeline', err));
+    } else {
+      setTimeline([]);
+    }
+  }, [selectedApproval, showModal]);
 
-    alert('Quotation approved! Purchase Order created: ' + newPO.poNumber);
-  };
-
-  const handleReject = (approval) => {
-    approvalService.update(approval.id, { status: 'Rejected' });
-    setApprovals(approvals.map((a) => (a.id === approval.id ? { ...a, status: 'Rejected' } : a)));
-    setShowModal(false);
-    alert('Quotation rejected');
+  const handleAction = async (action) => {
+    if (!selectedApproval) return;
+    setActionLoading(true);
+    try {
+      await apiClient.patch(`/approvals/${selectedApproval.id}/${action}`, { remarks });
+      alert(`Quotation ${action}d successfully`);
+      setShowModal(false);
+      setRemarks('');
+      fetchApprovals();
+    } catch (err) {
+      alert(err.message || `Failed to ${action} approval`);
+    } finally {
+      setActionLoading(false);
+    }
   };
 
   const columns = [
-    { key: 'rfqNo', label: 'RFQ No' },
+    { key: 'rfqNumber', label: 'RFQ No.' },
+    { key: 'quotationNumber', label: 'Quotation No.' },
     { key: 'vendorName', label: 'Vendor' },
-    { key: 'amount', label: 'Amount', render: (val) => `$${val.toLocaleString()}` },
-    { key: 'requestedAt', label: 'Requested' },
+    { key: 'grandTotal', label: 'Amount', render: (val) => val ? `$${val.toLocaleString()}` : '—' },
+    { key: 'requestedByName', label: 'Requested By' },
     {
       key: 'status',
       label: 'Status',
       render: (status) => {
-        const variants = { Pending: 'warning', Approved: 'success', Rejected: 'danger' };
-        return <Badge variant={variants[status]}>{status}</Badge>;
+        const variants = { PENDING: 'warning', APPROVED: 'success', REJECTED: 'danger' };
+        return <Badge variant={variants[status] || 'info'}>{status}</Badge>;
       },
     },
   ];
-
-  if (loading) {
-    return (
-      <Layout>
-        <Spinner size="lg" />
-      </Layout>
-    );
-  }
 
   return (
     <Layout>
       <div className="space-y-6">
         <h1 className="text-2xl font-bold">Quotation Approvals</h1>
 
+        {error && <Alert type="danger">{error}</Alert>}
+
         <Card>
-          <Table
-            columns={columns}
-            data={approvals}
-            actions={(approval) => (
-              approval.status === 'Pending' ? (
-                <Button
-                  variant="primary"
-                  size="sm"
-                  onClick={() => {
-                    setSelectedApproval(approval);
-                    setShowModal(true);
-                  }}
-                >
-                  Review
-                </Button>
-              ) : (
-                <Badge variant={approval.status === 'Approved' ? 'success' : 'danger'}>
-                  {approval.status}
-                </Badge>
-              )
-            )}
-          />
+          {loading ? (
+            <div className="flex justify-center py-10"><Spinner size="lg" /></div>
+          ) : (
+            <Table
+              columns={columns}
+              data={approvals}
+              actions={(approval) => (
+                approval.status === 'PENDING' && hasRole(['MANAGER', 'ADMIN']) ? (
+                  <Button
+                    variant="primary"
+                    size="sm"
+                    onClick={() => {
+                      setSelectedApproval(approval);
+                      setRemarks('');
+                      setShowModal(true);
+                    }}
+                  >
+                    Review
+                  </Button>
+                ) : (
+                  <Badge variant={approval.status === 'APPROVED' ? 'success' : approval.status === 'REJECTED' ? 'danger' : 'info'}>
+                    {approval.status}
+                  </Badge>
+                )
+              )}
+            />
+          )}
         </Card>
 
         <Modal
           isOpen={showModal}
           onClose={() => {
-            setShowModal(false);
-            setSelectedApproval(null);
+            if (!actionLoading) {
+              setShowModal(false);
+              setSelectedApproval(null);
+            }
           }}
           title="Review Quotation Approval"
         >
@@ -109,35 +126,64 @@ export const ApprovalsPage = () => {
               <div className="bg-blue-50 p-4 rounded-lg">
                 <div className="grid grid-cols-2 gap-4">
                   <div>
-                    <p className="text-sm text-text-secondary mb-1">RFQ</p>
-                    <p className="font-semibold">{selectedApproval.rfqNo}</p>
+                    <p className="text-sm text-slate-500 mb-1">RFQ</p>
+                    <p className="font-semibold">{selectedApproval.rfqNumber}</p>
                   </div>
                   <div>
-                    <p className="text-sm text-text-secondary mb-1">Vendor</p>
+                    <p className="text-sm text-slate-500 mb-1">Vendor</p>
                     <p className="font-semibold">{selectedApproval.vendorName}</p>
                   </div>
                 </div>
               </div>
               <div className="bg-green-50 p-4 rounded-lg">
-                <p className="text-sm text-text-secondary mb-1">Total Amount</p>
-                <p className="text-2xl font-bold text-success">
-                  ${selectedApproval.amount.toLocaleString()}
+                <p className="text-sm text-slate-500 mb-1">Total Amount</p>
+                <p className="text-2xl font-bold text-green-700">
+                  ${selectedApproval.grandTotal.toLocaleString()}
                 </p>
               </div>
+
+              <div>
+                <label className="block text-sm font-medium text-slate-700 mb-1">Remarks (Optional)</label>
+                <textarea
+                  value={remarks}
+                  onChange={(e) => setRemarks(e.target.value)}
+                  rows={3}
+                  className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  placeholder="Reason for approval or rejection..."
+                />
+              </div>
+
               <div className="flex justify-end gap-3 pt-4">
                 <Button
                   variant="danger"
-                  onClick={() => handleReject(selectedApproval)}
+                  onClick={() => handleAction('reject')}
+                  disabled={actionLoading}
                 >
-                  Reject
+                  {actionLoading ? 'Processing...' : 'Reject'}
                 </Button>
                 <Button
                   variant="success"
-                  onClick={() => handleApprove(selectedApproval)}
+                  onClick={() => handleAction('approve')}
+                  disabled={actionLoading}
                 >
-                  Approve
+                  {actionLoading ? 'Processing...' : 'Approve'}
                 </Button>
               </div>
+
+              {timeline.length > 0 && (
+                <div className="mt-6 pt-4 border-t">
+                  <h3 className="text-sm font-semibold mb-3">Approval History</h3>
+                  <div className="space-y-3">
+                    {timeline.map(log => (
+                      <div key={log.id} className="text-sm bg-slate-50 p-2 rounded border border-slate-100">
+                        <p className="font-semibold">{log.action}</p>
+                        {log.description && <p className="text-slate-600 mt-0.5">{log.description}</p>}
+                        <p className="text-xs text-slate-400 mt-1">{log.userName} on {new Date(log.createdAt).toLocaleString()}</p>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
             </div>
           )}
         </Modal>
@@ -146,140 +192,4 @@ export const ApprovalsPage = () => {
   );
 };
 
-export const PurchaseOrderListPage = () => {
-  const [pos, setPos] = useState([]);
-  const [loading, setLoading] = useState(true);
-  const navigate = useNavigate();
 
-  useEffect(() => {
-    const data = poService.getAll();
-    setPos(data);
-    setLoading(false);
-  }, []);
-
-  const columns = [
-    { key: 'poNumber', label: 'PO Number' },
-    { key: 'rfqNo', label: 'RFQ No' },
-    { key: 'vendorName', label: 'Vendor' },
-    { key: 'orderDate', label: 'Order Date' },
-    { key: 'totalAmount', label: 'Total', render: (val) => `$${val.toLocaleString()}` },
-    {
-      key: 'status',
-      label: 'Status',
-      render: (status) => <Badge variant={status === 'Confirmed' ? 'success' : 'info'}>{status}</Badge>,
-    },
-  ];
-
-  if (loading) {
-    return (
-      <Layout>
-        <Spinner size="lg" />
-      </Layout>
-    );
-  }
-
-  return (
-    <Layout>
-      <div className="space-y-6">
-        <h1 className="text-2xl font-bold">Purchase Orders</h1>
-
-        <Card>
-          <Table
-            columns={columns}
-            data={pos}
-            actions={(po) => (
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => navigate(`/purchase-orders/${po.id}`)}
-              >
-                View
-              </Button>
-            )}
-          />
-        </Card>
-      </div>
-    </Layout>
-  );
-};
-
-export const PurchaseOrderDetailPage = () => {
-  const { id } = useParams();
-  const [po, setPo] = useState(null);
-  const [loading, setLoading] = useState(true);
-  const navigate = useNavigate();
-
-  useEffect(() => {
-    const data = poService.getById(id);
-    setPo(data);
-    setLoading(false);
-  }, [id]);
-
-  if (loading) {
-    return (
-      <Layout>
-        <Spinner size="lg" />
-      </Layout>
-    );
-  }
-
-  if (!po) {
-    return (
-      <Layout>
-        <Alert type="danger">Purchase Order not found</Alert>
-      </Layout>
-    );
-  }
-
-  return (
-    <Layout>
-      <div className="space-y-6 max-w-4xl">
-        <div className="flex justify-between items-start">
-          <div>
-            <h1 className="text-3xl font-bold mb-2">{po.poNumber}</h1>
-            <p className="text-text-secondary">{po.vendorName}</p>
-          </div>
-          <Button variant="outline" onClick={() => navigate('/purchase-orders')}>
-            Back to List
-          </Button>
-        </div>
-
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-          <Card>
-            <p className="text-sm text-text-secondary mb-1">Order Date</p>
-            <p className="font-semibold">{po.orderDate}</p>
-          </Card>
-          <Card>
-            <p className="text-sm text-text-secondary mb-1">Delivery Date</p>
-            <p className="font-semibold">{po.deliveryDate}</p>
-          </Card>
-          <Card>
-            <p className="text-sm text-text-secondary mb-1">Status</p>
-            <Badge variant="success">{po.status}</Badge>
-          </Card>
-        </div>
-
-        <Card>
-          <h2 className="text-xl font-semibold mb-4">Order Items</h2>
-          <Table
-            columns={[
-              { key: 'itemNo', label: 'Item No' },
-              { key: 'description', label: 'Description' },
-              { key: 'quantity', label: 'Quantity' },
-              { key: 'unitPrice', label: 'Unit Price', render: (val) => `$${val}` },
-              { key: 'totalPrice', label: 'Total', render: (val) => `$${val.toLocaleString()}` },
-            ]}
-            data={po.items}
-          />
-        </Card>
-
-        <Card>
-          <div className="flex justify-between items-center">
-            <p className="text-lg font-semibold">Grand Total:</p>
-            <p className="text-3xl font-bold text-primary">${po.totalAmount.toLocaleString()}</p>
-          </div>
-        </Card>
-      </div>
-    </Layout>
-  );
-};

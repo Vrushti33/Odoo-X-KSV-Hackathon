@@ -1,11 +1,26 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Link, useLocation } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
+import { apiClient } from '../services/apiClient';
 
 export const Layout = ({ children }) => {
   const [sidebarOpen, setSidebarOpen] = useState(true);
+  const [unreadCount, setUnreadCount] = useState(0);
   const { user, logout } = useAuth();
   const location = useLocation();
+
+  useEffect(() => {
+    if (!user) return;
+    const fetchNotifications = async () => {
+      try {
+        const data = await apiClient.get('/notifications/count');
+        setUnreadCount(data.count || 0);
+      } catch (e) { /* ignore */ }
+    };
+    fetchNotifications();
+    const interval = setInterval(fetchNotifications, 30000);
+    return () => clearInterval(interval);
+  }, [user]);
 
   const menuItems = [
     { path: '/', label: 'Dashboard', roles: ['ADMIN', 'PROCUREMENT_OFFICER', 'VENDOR', 'MANAGER'] },
@@ -72,6 +87,14 @@ export const Layout = ({ children }) => {
             {visibleMenuItems.find((item) => item.path === location.pathname)?.label || 'Dashboard'}
           </h2>
           <div className="flex items-center gap-4">
+            <div className="relative cursor-pointer" title="Notifications">
+              <span className="text-xl">🔔</span>
+              {unreadCount > 0 && (
+                <span className="absolute -top-1 -right-2 bg-red-500 text-white text-[10px] font-bold px-1.5 py-0.5 rounded-full">
+                  {unreadCount}
+                </span>
+              )}
+            </div>
             <span className="text-sm text-text-secondary">
               {user?.firstName} {user?.lastName}
             </span>

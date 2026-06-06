@@ -43,16 +43,17 @@ export const RegisterPage = () => {
         return;
       }
 
-      register({
+      await register({
         firstName: formData.firstName,
         lastName: formData.lastName,
         email: formData.email,
+        password: formData.password,
         role: formData.role,
       });
 
       navigate('/');
     } catch (err) {
-      setError(err.message || 'Registration failed');
+      setError(err.message || 'Registration failed. Email may already be in use.');
     } finally {
       setLoading(false);
     }

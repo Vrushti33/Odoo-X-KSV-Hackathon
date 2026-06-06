@@ -1,64 +1,65 @@
 import React, { useState, useEffect } from 'react';
-import { useParams, useNavigate } from 'react-router-dom';
-import { invoiceService } from '../services/mockData';
-import { Table, Card, Badge, Button, Spinner, Alert } from '../components/UI';
+import { useNavigate, useParams } from 'react-router-dom';
+import { apiClient } from '../services/apiClient';
+import { Button, Table, Card, Badge, Spinner, Alert } from '../components/UI';
 import Layout from '../components/Layout';
 
 export const InvoiceListPage = () => {
   const [invoices, setInvoices] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState('');
   const navigate = useNavigate();
 
+  const fetchInvoices = async () => {
+    try {
+      setLoading(true);
+      const data = await apiClient.get('/invoices');
+      setInvoices(Array.isArray(data) ? data : data.content || []);
+    } catch (err) {
+      setError(err.message || 'Failed to fetch invoices');
+    } finally {
+      setLoading(false);
+    }
+  };
+
   useEffect(() => {
-    const data = invoiceService.getAll();
-    setInvoices(data);
-    setLoading(false);
+    fetchInvoices();
   }, []);
 
   const columns = [
-    { key: 'invoiceNumber', label: 'Invoice No' },
-    { key: 'poNumber', label: 'PO Number' },
+    { key: 'invoiceNumber', label: 'Invoice Number' },
+    { key: 'poNumber', label: 'PO No.' },
     { key: 'vendorName', label: 'Vendor' },
-    { key: 'issueDate', label: 'Issue Date' },
-    { key: 'dueDate', label: 'Due Date' },
-    { key: 'totalAmount', label: 'Amount', render: (val) => `$${val.toLocaleString()}` },
+    { key: 'invoiceDate', label: 'Date' },
+    { key: 'grandTotal', label: 'Total', render: (val) => val ? `$${val.toLocaleString()}` : '—' },
     {
       key: 'status',
       label: 'Status',
-      render: (status) => {
-        const variants = { Received: 'success', Paid: 'success', Pending: 'warning' };
-        return <Badge variant={variants[status] || 'info'}>{status}</Badge>;
-      },
+      render: (status) => <Badge variant={status === 'SUBMITTED' ? 'info' : 'success'}>{status}</Badge>,
     },
   ];
-
-  if (loading) {
-    return (
-      <Layout>
-        <Spinner size="lg" />
-      </Layout>
-    );
-  }
 
   return (
     <Layout>
       <div className="space-y-6">
         <h1 className="text-2xl font-bold">Invoices</h1>
 
+        {error && <Alert type="danger">{error}</Alert>}
+
         <Card>
-          <Table
-            columns={columns}
-            data={invoices}
-            actions={(invoice) => (
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => navigate(`/invoices/${invoice.id}`)}
-              >
-                View
-              </Button>
-            )}
-          />
+          {loading ? (
+            <div className="flex justify-center py-10"><Spinner size="lg" /></div>
+          ) : (
+            <Table
+              columns={columns}
+              data={invoices}
+              actions={(invoice) => (
+                <Button variant="outline" size="sm" onClick={() => navigate(`/invoices/${invoice.id}`)}>
+                  View
+                </Button>
+              )}
+            />
+          )}
         </Card>
       </div>
     </Layout>
@@ -69,29 +70,49 @@ export const InvoiceDetailPage = () => {
   const { id } = useParams();
   const [invoice, setInvoice] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState('');
   const navigate = useNavigate();
 
   useEffect(() => {
-    const data = invoiceService.getById(id);
-    setInvoice(data);
-    setLoading(false);
+    apiClient.get(`/invoices/${id}`)
+      .then(setInvoice)
+      .catch(err => setError(err.message))
+      .finally(() => setLoading(false));
   }, [id]);
 
-  if (loading) {
-    return (
-      <Layout>
-        <Spinner size="lg" />
-      </Layout>
-    );
-  }
+  const handleDownloadPdf = async () => {
+    try {
+      const baseUrl = import.meta.env.VITE_API_URL || 'http://localhost:8080/api';
+      const response = await fetch(`${baseUrl}/invoices/${id}/pdf`, {
+        headers: { 'Authorization': `Bearer ${localStorage.getItem('authToken')}` }
+      });
+      if (!response.ok) throw new Error('Failed to download PDF');
+      
+      const blob = await response.blob();
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `INV-${invoice?.invoiceNumber || id}.pdf`;
+      document.body.appendChild(a);
+      a.click();
+      window.URL.revokeObjectURL(url);
+    } catch (err) {
+      alert(err.message);
+    }
+  };
 
-  if (!invoice) {
-    return (
-      <Layout>
-        <Alert type="danger">Invoice not found</Alert>
-      </Layout>
-    );
-  }
+  const handleSendEmail = async () => {
+    try {
+      await apiClient.post(`/invoices/${id}/send-email`);
+      alert('Email sent successfully!');
+    } catch (err) {
+      alert(err.message || 'Failed to send email');
+    }
+  };
+
+  if (loading) return <Layout><Spinner size="lg" /></Layout>;
+  if (error) return <Layout><Alert type="danger">{error}</Alert></Layout>;
+  if (!invoice) return <Layout><Alert type="danger">Invoice not found</Alert></Layout>;
 
   return (
     <Layout>
@@ -99,29 +120,31 @@ export const InvoiceDetailPage = () => {
         <div className="flex justify-between items-start">
           <div>
             <h1 className="text-3xl font-bold mb-2">{invoice.invoiceNumber}</h1>
-            <p className="text-text-secondary">{invoice.vendorName}</p>
+            <p className="text-slate-500">{invoice.vendorName}</p>
           </div>
-          <Button variant="outline" onClick={() => navigate('/invoices')}>
-            Back to List
-          </Button>
+          <div className="flex gap-2">
+            <Button variant="outline" onClick={handleDownloadPdf}>Download PDF</Button>
+            <Button variant="primary" onClick={handleSendEmail}>Email Invoice</Button>
+            <Button variant="outline" onClick={() => navigate('/invoices')}>Back to List</Button>
+          </div>
         </div>
 
         <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
           <Card>
-            <p className="text-sm text-text-secondary mb-1">PO Number</p>
-            <p className="font-semibold">{invoice.poNumber}</p>
+            <p className="text-sm text-slate-500 mb-1">Invoice Date</p>
+            <p className="font-semibold">{invoice.invoiceDate}</p>
           </Card>
           <Card>
-            <p className="text-sm text-text-secondary mb-1">Issue Date</p>
-            <p className="font-semibold">{invoice.issueDate}</p>
+            <p className="text-sm text-slate-500 mb-1">Due Date</p>
+            <p className="font-semibold text-red-600">{invoice.dueDate}</p>
           </Card>
           <Card>
-            <p className="text-sm text-text-secondary mb-1">Due Date</p>
-            <p className="font-semibold">{invoice.dueDate}</p>
+            <p className="text-sm text-slate-500 mb-1">Status</p>
+            <Badge variant="info">{invoice.status}</Badge>
           </Card>
           <Card>
-            <p className="text-sm text-text-secondary mb-1">Status</p>
-            <Badge variant="success">{invoice.status}</Badge>
+            <p className="text-sm text-slate-500 mb-1">Payment</p>
+            <Badge variant={invoice.paymentStatus === 'PAID' ? 'success' : 'danger'}>{invoice.paymentStatus}</Badge>
           </Card>
         </div>
 
@@ -129,17 +152,27 @@ export const InvoiceDetailPage = () => {
           <h2 className="text-xl font-semibold mb-4">Invoice Items</h2>
           <Table
             columns={[
-              { key: 'description', label: 'Description' },
-              { key: 'amount', label: 'Amount', render: (val) => `$${val.toLocaleString()}` },
+              { key: 'itemName', label: 'Description' },
+              { key: 'quantity', label: 'Quantity' },
+              { key: 'unitPrice', label: 'Unit Price', render: (val) => `$${val}` },
+              { key: 'lineTotal', label: 'Total', render: (val) => `$${val.toLocaleString()}` },
             ]}
             data={invoice.items}
           />
         </Card>
 
-        <Card className="bg-blue-50">
+        <Card>
+          <div className="flex justify-between items-center text-sm mb-2">
+            <span className="text-slate-500">Subtotal</span>
+            <span>${invoice.subtotal?.toLocaleString()}</span>
+          </div>
+          <div className="flex justify-between items-center text-sm mb-4 border-b pb-4">
+            <span className="text-slate-500">IGST</span>
+            <span>${invoice.igst?.toLocaleString()}</span>
+          </div>
           <div className="flex justify-between items-center">
-            <p className="text-lg font-semibold">Invoice Total:</p>
-            <p className="text-3xl font-bold text-primary">${invoice.totalAmount.toLocaleString()}</p>
+            <p className="text-lg font-semibold">Grand Total:</p>
+            <p className="text-3xl font-bold text-green-700">${invoice.grandTotal?.toLocaleString()}</p>
           </div>
         </Card>
       </div>
