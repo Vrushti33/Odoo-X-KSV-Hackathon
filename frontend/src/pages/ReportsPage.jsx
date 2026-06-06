@@ -1,62 +1,22 @@
 import React, { useState, useEffect } from 'react';
 import { BarChart, Bar, PieChart, Pie, Cell, LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts';
-import { rfqService, quotationService, approvalService, poService } from '../services/mockData';
+import { apiClient } from '../services/apiClient';
 import { Card, Spinner } from '../components/UI';
 import Layout from '../components/Layout';
 
 export const ReportsPage = () => {
   const [stats, setStats] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
 
   useEffect(() => {
-    const loadStats = () => {
+    const loadStats = async () => {
       try {
-        const rfqs = rfqService.getAll();
-        const quotations = quotationService.getAll();
-        const approvals = approvalService.getAll();
-        const pos = poService.getAll();
-
-        // Calculate statistics
-        const totalRFQValue = rfqs.reduce((sum, r) => sum + Number(r.budget), 0);
-        const totalQuotationValue = quotations.reduce((sum, q) => sum + Number(q.totalPrice), 0);
-        const approvedValue = approvals.filter(a => a.status === 'Approved').reduce((sum, a) => sum + Number(a.amount), 0);
-        const poValue = pos.reduce((sum, p) => sum + Number(p.totalAmount), 0);
-
-        // RFQ Status data
-        const rfqStatusData = [
-          { name: 'Open', value: rfqs.filter(r => r.status === 'Open').length },
-          { name: 'Closed', value: rfqs.filter(r => r.status === 'Closed').length },
-        ];
-
-        // Approval Status data
-        const approvalStatusData = [
-          { name: 'Pending', value: approvals.filter(a => a.status === 'Pending').length },
-          { name: 'Approved', value: approvals.filter(a => a.status === 'Approved').length },
-          { name: 'Rejected', value: approvals.filter(a => a.status === 'Rejected').length },
-        ];
-
-        // Trend data
-        const trendData = [
-          { month: 'Nov', rfqs: rfqs.length, quotations: quotations.length },
-          { month: 'Dec', rfqs: rfqs.length + 2, quotations: quotations.length + 3 },
-          { month: 'Jan', rfqs: rfqs.length + 4, quotations: quotations.length + 5 },
-        ];
-
-        setStats({
-          totalRFQValue,
-          totalQuotationValue,
-          approvedValue,
-          poValue,
-          rfqStatusData,
-          approvalStatusData,
-          trendData,
-          totalRFQs: rfqs.length,
-          totalQuotations: quotations.length,
-          totalApprovals: approvals.length,
-          totalPOs: pos.length,
-        });
+        const data = await apiClient.get('/reports/stats');
+        setStats(data);
       } catch (err) {
         console.error('Error loading statistics:', err);
+        setError(err.message || 'Failed to load report statistics');
       } finally {
         setLoading(false);
       }
@@ -68,7 +28,19 @@ export const ReportsPage = () => {
   if (loading) {
     return (
       <Layout>
-        <Spinner size="lg" />
+        <div className="flex justify-center items-center h-64">
+          <Spinner size="lg" />
+        </div>
+      </Layout>
+    );
+  }
+
+  if (error) {
+    return (
+      <Layout>
+        <div className="p-4 bg-red-900/50 border border-red-500 rounded text-red-200">
+          {error}
+        </div>
       </Layout>
     );
   }

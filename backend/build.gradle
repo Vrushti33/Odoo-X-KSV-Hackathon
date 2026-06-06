@@ -41,11 +41,7 @@ dependencies {
 	testRuntimeOnly 'org.junit.platform:junit-platform-launcher'
 }
 
-tasks.named('test') {
-	useJUnitPlatform()
-}
-
-tasks.named('bootRun') {
+def loadDotEnv = { task ->
 	if (file(".env").exists()) {
 		file(".env").readLines().each {
 			if (!it.isEmpty() && !it.startsWith("#")) {
@@ -57,10 +53,22 @@ tasks.named('bootRun') {
 					if (value.startsWith('"') && value.endsWith('"') || value.startsWith("'") && value.endsWith("'")) {
 						value = value.substring(1, value.length() - 1)
 					}
-					environment key, value
+					task.environment key, value
 				}
 			}
 		}
 	}
 }
+
+tasks.named('test') {
+	useJUnitPlatform()
+	doFirst {
+		loadDotEnv(it)
+	}
+}
+
+tasks.named('bootRun') {
+	loadDotEnv(it)
+}
+
 
